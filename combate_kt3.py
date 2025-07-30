@@ -1,134 +1,114 @@
 import streamlit as st
-from PIL import Image
-import base64
 
 st.set_page_config(layout="wide")
+st.title("Simulador Combate Kill Team")
 
-# --- Estado inicial ---
+# Resetear
+if st.button("🔄 Resetear"):
+    st.session_state.clear()
+    st.experimental_rerun()
+
+# Inicializar estado
 if "dados_aliado" not in st.session_state:
     st.session_state.dados_aliado = []
-if "dados_enemigo" not in st.session_state:
     st.session_state.dados_enemigo = []
-if "acciones" not in st.session_state:
     st.session_state.acciones = []
+    st.session_state.vida_aliado_actual = 12
+    st.session_state.vida_enemigo_actual = 12
 
-# --- Funciones ---
-def crear_dados(tipo, cantidad, origen):
-    return [{"tipo": tipo, "usado": False, "accion": None, "origen": origen, "bloqueado": False} for _ in range(cantidad)]
-
-def resetear():
-    st.session_state.dados_aliado = crear_dados("normal", st.session_state.n_aliado, "aliado") + \
-                                     crear_dados("critico", st.session_state.c_aliado, "aliado")
-    st.session_state.dados_enemigo = crear_dados("normal", st.session_state.n_enemigo, "enemigo") + \
-                                      crear_dados("critico", st.session_state.c_enemigo, "enemigo")
-    st.session_state.acciones = []
-
-def actualizar_vidas():
-    vida_aliado = st.session_state.vida_aliado
-    vida_enemigo = st.session_state.vida_enemigo
-    for accion in st.session_state.acciones:
-        if accion["accion"] == "atacar":
-            if accion["origen"] == "aliado":
-                vida_enemigo -= accion["daño"]
-            else:
-                vida_aliado -= accion["daño"]
-    return max(vida_aliado, 0), max(vida_enemigo, 0)
-
-def elegir_accion(idx, origen):
-    dado = None
-    if origen == "aliado":
-        dado = st.session_state.dados_aliado[idx]
-    else:
-        dado = st.session_state.dados_enemigo[idx]
-
-    if dado["usado"]:
-        return
-
-    opciones = []
-    opuesto = "enemigo" if origen == "aliado" else "aliado"
-    dados_opuestos = st.session_state.dados_enemigo if opuesto == "enemigo" else st.session_state.dados_aliado
-    hay_bloqueables = any(not d["usado"] and not d["bloqueado"] for d in dados_opuestos)
-
-    if hay_bloqueables:
-        opciones.append("Bloquear")
-    opciones.append("Atacar")
-
-    eleccion = st.radio(
-        f"¿Qué hace el {origen} con este dado ({dado['tipo']})?",
-        opciones,
-        key=f"accion_{origen}_{idx}"
-    )
-
-    if eleccion == "Bloquear":
-        for i, d in enumerate(dados_opuestos):
-            if not d["usado"] and not d["bloqueado"]:
-                d["bloqueado"] = True
-                break
-        dado["usado"] = True
-        dado["accion"] = "bloquear"
-        st.session_state.acciones.append({"origen": origen, "accion": "bloquear", "tipo": dado["tipo"], "daño": 0})
-    elif eleccion == "Atacar":
-        daño = st.session_state.daño_normal_aliado if origen == "aliado" else st.session_state.daño_normal_enemigo
-        if dado["tipo"] == "critico":
-            daño = st.session_state.daño_critico_aliado if origen == "aliado" else st.session_state.daño_critico_enemigo
-        dado["usado"] = True
-        dado["accion"] = "atacar"
-        st.session_state.acciones.append({"origen": origen, "accion": "atacar", "tipo": dado["tipo"], "daño": daño})
-
-# --- Configuración inicial ---
-st.title("⚔️ Simulador Interactivo de Combate – Kill Team 3")
-
+# Columnas para la configuración
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("⚔️ Atacante")
-    st.session_state.vida_aliado = st.number_input("Vida inicial", min_value=1, max_value=50, value=12, key="vida_aliado")
-    st.session_state.n_aliado = st.number_input("Éxitos normales", min_value=0, max_value=10, value=2, key="n_aliado")
-    st.session_state.c_aliado = st.number_input("Éxitos críticos", min_value=0, max_value=10, value=1, key="c_aliado")
-    st.session_state.daño_normal_aliado = st.number_input("Daño por éxito normal", min_value=1, max_value=10, value=3)
-    st.session_state.daño_critico_aliado = st.number_input("Daño por crítico", min_value=1, max_value=20, value=5)
+    st.header("⚔️ Atacante")
+    vida_aliado = st.number_input("Vida inicial", min_value=1, max_value=50, value=12, key="vida_aliado")
+    exito_normal_aliado = st.number_input("Éxitos normales", min_value=0, max_value=10, value=2, key="norm_aliado")
+    exito_critico_aliado = st.number_input("Éxitos críticos", min_value=0, max_value=10, value=1, key="crit_aliado")
+    daño_normal_aliado = st.number_input("Daño por éxito normal", min_value=1, max_value=10, value=3, key="daño_normal_aliado")
+    daño_critico_aliado = st.number_input("Daño por éxito crítico", min_value=1, max_value=10, value=5, key="daño_critico_aliado")
 
 with col2:
-    st.subheader("🛡️ Defensor")
-    st.session_state.vida_enemigo = st.number_input("Vida inicial", min_value=1, max_value=50, value=10, key="vida_enemigo")
-    st.session_state.n_enemigo = st.number_input("Éxitos normales", min_value=0, max_value=10, value=2, key="n_enemigo")
-    st.session_state.c_enemigo = st.number_input("Éxitos críticos", min_value=0, max_value=10, value=1, key="c_enemigo")
-    st.session_state.daño_normal_enemigo = st.number_input("Daño por éxito normal", min_value=1, max_value=10, value=2)
-    st.session_state.daño_critico_enemigo = st.number_input("Daño por crítico", min_value=1, max_value=20, value=4)
+    st.header("🛡️ Defensor")
+    vida_enemigo = st.number_input("Vida inicial", min_value=1, max_value=50, value=12, key="vida_enemigo")
+    exito_normal_enemigo = st.number_input("Éxitos normales", min_value=0, max_value=10, value=2, key="norm_enemigo")
+    exito_critico_enemigo = st.number_input("Éxitos críticos", min_value=0, max_value=10, value=1, key="crit_enemigo")
+    daño_normal_enemigo = st.number_input("Daño por éxito normal", min_value=1, max_value=10, value=3, key="daño_normal_enemigo")
+    daño_critico_enemigo = st.number_input("Daño por éxito crítico", min_value=1, max_value=10, value=5, key="daño_critico_enemigo")
 
-st.button("🔁 Generar dados / Reiniciar", on_click=resetear)
+# Cargar o resetear dados
+if st.button("🎲 Cargar dados"):
+    st.session_state.dados_aliado = [{"tipo": "critico", "usado": False}] * exito_critico_aliado + [{"tipo": "normal", "usado": False}] * exito_normal_aliado
+    st.session_state.dados_enemigo = [{"tipo": "critico", "usado": False}] * exito_critico_enemigo + [{"tipo": "normal", "usado": False}] * exito_normal_enemigo
+    st.session_state.vida_aliado_actual = vida_aliado
+    st.session_state.vida_enemigo_actual = vida_enemigo
+    st.session_state.acciones = []
 
-# --- Mostrar dados ---
-st.markdown("---")
+# Función para mostrar dados
+def mostrar_dados(dados, rival, is_aliado=True):
+    fila = []
+    for i, dado in enumerate(dados):
+        color = "#FFD700" if dado["tipo"] == "critico" else "#FFFFFF"
+        if dado["usado"]:
+            color = "#CCCCCC"
 
-vida_aliado_actual, vida_enemigo_actual = actualizar_vidas()
+        label = "💥" if dado["tipo"] == "critico" else "⚪"
 
-def mostrar_dados(dados, origen, vida_restante):
-    col1, col2 = st.columns([1, 8])
-    with col1:
-        if vida_restante <= 0:
-            st.markdown("💀 **¡Muerto!**")
-        else:
-            st.markdown(f"❤️ {vida_restante}")
-    with col2:
-        cols = st.columns(len(dados))
-        for i, dado in enumerate(dados):
-            estilo = "opacity: 0.3;" if dado["usado"] or dado["bloqueado"] or vida_restante <= 0 else ""
-            color = "#fff" if dado["tipo"] == "normal" else "#ff0"
-            simbolo = "✴️" if dado["tipo"] == "critico" else "🎯"
-            if dado["accion"] == "bloquear":
-                simbolo = "🛡️"
-            elif dado["accion"] == "atacar":
-                simbolo = "💥"
-            with cols[i]:
-                st.markdown(
-                    f'<div style="font-size:40px; text-align:center; background-color:{color}; {estilo}" onclick="">{simbolo}</div>',
-                    unsafe_allow_html=True,
+        if not dado["usado"] and rival is not None:
+            if st.button(label, key=f"{'a' if is_aliado else 'd'}_{i}"):
+                accion = st.radio(
+                    f"¿Qué hacer con este dado?", ["Atacar", "Bloquear"],
+                    key=f"accion_{'a' if is_aliado else 'd'}_{i}"
                 )
-                if not dado["usado"] and not dado["bloqueado"] and vida_restante > 0:
-                    if st.button("⚙️", key=f"{origen}_{i}"):
-                        elegir_accion(i, origen)
+                if accion == "Atacar":
+                    daño = daño_critico_aliado if (is_aliado and dado["tipo"] == "critico") else (
+                        daño_normal_aliado if is_aliado else (
+                            daño_critico_enemigo if dado["tipo"] == "critico" else daño_normal_enemigo
+                        )
+                    )
+                    if is_aliado:
+                        st.session_state.vida_enemigo_actual -= daño
+                    else:
+                        st.session_state.vida_aliado_actual -= daño
+                    st.session_state.acciones.append(f"{'Atacante' if is_aliado else 'Defensor'} hace {daño} de daño.")
+                else:
+                    # Buscar primer dado rival sin usar y marcarlo
+                    for rival_dado in rival:
+                        if not rival_dado["usado"]:
+                            rival_dado["usado"] = True
+                            st.session_state.acciones.append(f"{'Atacante' if is_aliado else 'Defensor'} bloquea un dado del rival.")
+                            break
 
-# --- Mostrar dados en 2 filas ---
-mostrar_dados(st.session_state.dados_aliado, "aliado", vida_aliado_actual)
-mostrar_dados(st.session_state.dados_enemigo, "enemigo", vida_enemigo_actual)
+                dado["usado"] = True
+
+        if st.session_state.vida_aliado_actual <= 0 and is_aliado:
+            label = "💀 ¡Muerto!"
+        elif st.session_state.vida_enemigo_actual <= 0 and not is_aliado:
+            label = "💀 ¡Muerto!"
+
+        fila.append(st.markdown(
+            f"<div style='display:inline-block;margin:2px;padding:8px;background-color:{color};border-radius:5px;text-align:center;'>{label}</div>",
+            unsafe_allow_html=True
+        ))
+
+# Mostrar dados
+st.markdown("### ⚔️ Zona de combate")
+
+# Vida del Atacante
+col_vida_a1, col_dados_a = st.columns([1, 9])
+with col_vida_a1:
+    st.markdown(f"❤️ {st.session_state.vida_aliado_actual}")
+with col_dados_a:
+    mostrar_dados(st.session_state.dados_aliado, st.session_state.dados_enemigo, is_aliado=True)
+
+# Vida del Defensor
+col_vida_e1, col_dados_e = st.columns([1, 9])
+with col_vida_e1:
+    st.markdown(f"❤️ {st.session_state.vida_enemigo_actual}")
+with col_dados_e:
+    mostrar_dados(st.session_state.dados_enemigo, st.session_state.dados_aliado, is_aliado=False)
+
+# Mostrar acciones
+if st.session_state.acciones:
+    st.markdown("### 📜 Registro de acciones")
+    for acc in st.session_state.acciones:
+        st.markdown(f"- {acc}")
