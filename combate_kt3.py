@@ -1,82 +1,111 @@
 
 import streamlit as st
+import uuid
 
-st.set_page_config(page_title="Simulador Cuerpo a Cuerpo - Kill Team 3", layout="wide")
+st.set_page_config(page_title="Simulador Interactivo Cuerpo a Cuerpo", layout="wide")
 
-# ICONOS
-ICON_HIT = "🗡️"
-ICON_CRIT = "💥"
-ICON_BLOCK = "🛡️"
+st.title("⚔️ Simulador Interactivo de Combate Cuerpo a Cuerpo - Kill Team 3")
 
-# CONFIGURACIÓN
-estrategia = st.sidebar.selectbox("Estrategia", ["Mejor resultado", "Máximo daño", "Defensiva"], index=0)
+st.markdown("Haz clic en los dados para decidir si atacan o bloquean. El combate termina si uno muere.")
 
-st.markdown("## Configuración de los combatientes")
+# Función para crear un dado visual
+def render_die(die_type, used=False, translucent=False, label=None):
+    color = "yellow" if die_type == "crit" else "white"
+    opacity = 0.4 if translucent else 1.0
+    emoji = "💥" if die_type == "crit" else "⚪"
+    return f'<span style="font-size:30px; opacity:{opacity}; color:{color}; margin:4px;">{emoji}<br>{label or ""}</span>'
+
+# Inicialización de estados
+if "attacker_dice" not in st.session_state:
+    st.session_state.attacker_dice = []
+    st.session_state.defender_dice = []
+    st.session_state.attacker_hp = 10
+    st.session_state.defender_hp = 10
+    st.session_state.used_dice = set()
+    st.session_state.blocked_dice = set()
+    st.session_state.attacker_dmg = {"normal": 3, "crit": 5}
+    st.session_state.defender_dmg = {"normal": 2, "crit": 4}
+    st.session_state.killed = {"attacker": False, "defender": False}
+
+# Reseteo
+if st.button("🔄 Resetear combate"):
+    st.session_state.attacker_dice = []
+    st.session_state.defender_dice = []
+    st.session_state.attacker_hp = 10
+    st.session_state.defender_hp = 10
+    st.session_state.used_dice = set()
+    st.session_state.blocked_dice = set()
+    st.session_state.killed = {"attacker": False, "defender": False}
 
 col1, col2 = st.columns(2)
 with col1:
-    st.markdown("### Atacante")
-    vida_atacante = st.number_input("Vida inicial atacante", min_value=1, value=10, key="vida_a")
-    daño_normal_a = st.number_input("Daño por éxito normal", min_value=1, value=3, key="daño_normal_a")
-    daño_critico_a = st.number_input("Daño por éxito crítico", min_value=1, value=5, key="daño_critico_a")
-    éxitos_normales_a = st.number_input("Éxitos normales", min_value=0, value=2, key="normales_a")
-    éxitos_criticos_a = st.number_input("Éxitos críticos", min_value=0, value=1, key="criticos_a")
+    st.header("Atacante")
+    st.session_state.attacker_hp = st.number_input("Vida del Atacante", 1, 50, st.session_state.attacker_hp)
+    st.session_state.attacker_dmg["normal"] = st.number_input("Daño Normal Atacante", 1, 10, st.session_state.attacker_dmg["normal"])
+    st.session_state.attacker_dmg["crit"] = st.number_input("Daño Crítico Atacante", 1, 10, st.session_state.attacker_dmg["crit"])
+    num_a_normal = st.number_input("Éxitos Normales Atacante", 0, 10, 3)
+    num_a_crit = st.number_input("Éxitos Críticos Atacante", 0, 10, 1)
+    if st.button("Cargar dados atacante"):
+        st.session_state.attacker_dice = [("normal", str(uuid.uuid4())) for _ in range(num_a_normal)] +                                          [("crit", str(uuid.uuid4())) for _ in range(num_a_crit)]
 
 with col2:
-    st.markdown("### Defensor")
-    vida_defensor = st.number_input("Vida inicial defensor", min_value=1, value=10, key="vida_d")
-    daño_normal_d = st.number_input("Daño por éxito normal", min_value=1, value=2, key="daño_normal_d")
-    daño_critico_d = st.number_input("Daño por éxito crítico", min_value=1, value=4, key="daño_critico_d")
-    éxitos_normales_d = st.number_input("Éxitos normales", min_value=0, value=2, key="normales_d")
-    éxitos_criticos_d = st.number_input("Éxitos críticos", min_value=0, value=1, key="criticos_d")
+    st.header("Defensor")
+    st.session_state.defender_hp = st.number_input("Vida del Defensor", 1, 50, st.session_state.defender_hp)
+    st.session_state.defender_dmg["normal"] = st.number_input("Daño Normal Defensor", 1, 10, st.session_state.defender_dmg["normal"])
+    st.session_state.defender_dmg["crit"] = st.number_input("Daño Crítico Defensor", 1, 10, st.session_state.defender_dmg["crit"])
+    num_d_normal = st.number_input("Éxitos Normales Defensor", 0, 10, 2)
+    num_d_crit = st.number_input("Éxitos Críticos Defensor", 0, 10, 1)
+    if st.button("Cargar dados defensor"):
+        st.session_state.defender_dice = [("normal", str(uuid.uuid4())) for _ in range(num_d_normal)] +                                          [("crit", str(uuid.uuid4())) for _ in range(num_d_crit)]
 
-if st.button("Simular combate"):
-    a_hits = ["crit"] * éxitos_criticos_a + ["norm"] * éxitos_normales_a
-    d_hits = ["crit"] * éxitos_criticos_d + ["norm"] * éxitos_normales_d
+# Función de interacción con dado
+def handle_click(die_id, actor, die_type):
+    if die_id in st.session_state.used_dice or st.session_state.killed["attacker"] or st.session_state.killed["defender"]:
+        return
 
-    log = []
-    turno = "atacante"
-    idx_a = idx_d = 0
+    action = st.radio(f"¿Qué hace el dado {die_id[:4]} ({actor})?", ["Atacar", "Bloquear"], horizontal=True, key=die_id)
+    target = "defender" if actor == "attacker" else "attacker"
+    target_dice = st.session_state.defender_dice if actor == "attacker" else st.session_state.attacker_dice
+    target_dmg = st.session_state.attacker_dmg if actor == "defender" else st.session_state.defender_dmg
 
-    def bloquear(own, enemy):
-        for i, e in enumerate(enemy):
-            if e == "crit":
-                enemy.pop(i)
-                return True
-        for i, e in enumerate(enemy):
-            if e == "norm":
-                enemy.pop(i)
-                return True
-        return False
+    if action == "Atacar":
+        dmg = st.session_state.attacker_dmg[die_type] if actor == "attacker" else st.session_state.defender_dmg[die_type]
+        st.session_state[target + "_hp"] -= dmg
+        st.write(f"{actor.capitalize()} inflige {dmg} de daño a {target}. Vida restante: {st.session_state[target + '_hp']}")
+    else:
+        for i, (t_die_type, t_die_id) in enumerate(target_dice):
+            if t_die_id not in st.session_state.blocked_dice and                (t_die_type == die_type or die_type == "crit"):
+                st.session_state.blocked_dice.add(t_die_id)
+                st.write(f"{actor.capitalize()} bloquea un dado de {target}.")
+                break
 
-    while (a_hits or d_hits) and vida_atacante > 0 and vida_defensor > 0:
-        if turno == "atacante" and a_hits:
-            actual = a_hits.pop(0)
-            if estrategia == "Defensiva":
-                bloqueado = bloquear(a_hits, d_hits)
-                log.append(f"{ICON_BLOCK} Atacante bloquea ({'💥' if actual=='crit' else ICON_HIT})")
-            elif estrategia == "Máximo daño" or estrategia == "Mejor resultado":
-                dmg = daño_critico_a if actual == "crit" else daño_normal_a
-                vida_defensor -= dmg
-                log.append(f"{ICON_CRIT if actual == 'crit' else ICON_HIT} Atacante golpea: -{dmg} (Defensor: {max(vida_defensor,0)}❤️)")
-        elif turno == "defensor" and d_hits:
-            actual = d_hits.pop(0)
-            if estrategia == "Defensiva":
-                bloqueado = bloquear(d_hits, a_hits)
-                log.append(f"{ICON_BLOCK} Defensor bloquea ({'💥' if actual=='crit' else ICON_HIT})")
-            elif estrategia == "Máximo daño" or estrategia == "Mejor resultado":
-                dmg = daño_critico_d if actual == "crit" else daño_normal_d
-                vida_atacante -= dmg
-                log.append(f"{ICON_CRIT if actual == 'crit' else ICON_HIT} Defensor golpea: -{dmg} (Atacante: {max(vida_atacante,0)}❤️)")
-        turno = "defensor" if turno == "atacante" else "atacante"
+    st.session_state.used_dice.add(die_id)
 
-        if vida_defensor <= 0:
-            log.append("💀 ¡El defensor ha muerto!")
-            break
-        if vida_atacante <= 0:
-            log.append("💀 ¡El atacante ha muerto!")
-            break
+    # Muerte
+    for p in ["attacker", "defender"]:
+        if st.session_state[p + "_hp"] <= 0:
+            st.session_state.killed[p] = True
 
-    st.markdown("## Resultado del combate")
-    for evento in log:
-        st.markdown(f"- {evento}")
+# Mostrar vida
+st.markdown(f"### ❤️ Vida Atacante: {st.session_state.attacker_hp}")
+dice_row = ""
+for die_type, die_id in st.session_state.attacker_dice:
+    label = "¡Muerto!" if st.session_state.killed["attacker"] else ""
+    dice_row += render_die(die_type, die_id in st.session_state.used_dice,
+                           st.session_state.killed["attacker"] or die_id in st.session_state.blocked_dice, label)
+st.markdown(dice_row, unsafe_allow_html=True)
+
+# Mostrar vida
+st.markdown(f"### ❤️ Vida Defensor: {st.session_state.defender_hp}")
+dice_row = ""
+for die_type, die_id in st.session_state.defender_dice:
+    label = "¡Muerto!" if st.session_state.killed["defender"] else ""
+    dice_row += render_die(die_type, die_id in st.session_state.used_dice,
+                           st.session_state.killed["defender"] or die_id in st.session_state.blocked_dice, label)
+st.markdown(dice_row, unsafe_allow_html=True)
+
+# Selector para usar cada dado
+for actor, dice_list in [("attacker", st.session_state.attacker_dice), ("defender", st.session_state.defender_dice)]:
+    for die_type, die_id in dice_list:
+        if die_id not in st.session_state.used_dice and not st.session_state.killed[actor]:
+            handle_click(die_id, actor, die_type)
