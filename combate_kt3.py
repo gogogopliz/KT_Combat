@@ -1,139 +1,92 @@
 
 import streamlit as st
 
-st.set_page_config(page_title="Combate Kill Team", layout="centered")
+st.set_page_config(page_title="Simulador de Combate - Kill Team 3", layout="centered")
 
-# Inicialización de estados
+# Reiniciar aplicación
+def reset_app():
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    st.experimental_rerun()
+
+# Inicialización de estado
 if "fase" not in st.session_state:
     st.session_state.fase = "inicio"
-    st.session_state.dados = {
-        "atacante": {"normales": 0, "criticos": 0},
-        "defensor": {"normales": 0, "criticos": 0},
-    }
     st.session_state.vidas = {"atacante": 10, "defensor": 10}
-    st.session_state.dmg = {"normal": 3, "critico": 5}
-    st.session_state.acciones = []
-    st.session_state.bloqueados = {"atacante": [], "defensor": []}
-    st.session_state.turno = "atacante"
+    st.session_state.daño = {"atacante": [3, 5], "defensor": [3, 5]}  # [normal, crítico]
+    st.session_state.éxitos = {"atacante": [], "defensor": []}
+    st.session_state.resultados = []
+    st.session_state.exitos_usados = {"atacante": [], "defensor": []}
 
-# Función para reiniciar
-def reiniciar():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+st.title("⚔️ Simulador Combate Kill Team 3")
 
-# Fase de inicio
 if st.session_state.fase == "inicio":
-    st.title("Simulador de Combate Cuerpo a Cuerpo - Kill Team 3")
+    st.subheader("Introduce los datos de combate")
 
-    st.subheader("Datos del atacante")
-    st.session_state.dados["atacante"]["normales"] = st.number_input("Éxitos normales (atacante)", 0, 10, 2)
-    st.session_state.dados["atacante"]["criticos"] = st.number_input("Éxitos críticos (atacante)", 0, 10, 1)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### Atacante")
+        st.session_state.vidas["atacante"] = st.number_input("Vida Atacante", 1, 30, st.session_state.vidas["atacante"], key="vida_atacante")
+        st.session_state.daño["atacante"][0] = st.number_input("Daño Normal", 1, 10, st.session_state.daño["atacante"][0], key="daño_normal_a")
+        st.session_state.daño["atacante"][1] = st.number_input("Daño Crítico", 1, 15, st.session_state.daño["atacante"][1], key="daño_critico_a")
+        st.session_state.éxitos["atacante"] = st.multiselect("Éxitos Atacante", ["✅"] * 6 + ["✴️"] * 6, key="exitos_atacante")
 
-    st.subheader("Datos del defensor")
-    st.session_state.dados["defensor"]["normales"] = st.number_input("Éxitos normales (defensor)", 0, 10, 2)
-    st.session_state.dados["defensor"]["criticos"] = st.number_input("Éxitos críticos (defensor)", 0, 10, 1)
-
-    st.subheader("Datos generales")
-    st.session_state.vidas["atacante"] = st.number_input("Vida del atacante", 1, 30, 10)
-    st.session_state.vidas["defensor"] = st.number_input("Vida del defensor", 1, 30, 10)
-    st.session_state.dmg["normal"] = st.number_input("Daño normal", 1, 10, 3)
-    st.session_state.dmg["critico"] = st.number_input("Daño crítico", 1, 20, 5)
+    with col2:
+        st.markdown("#### Defensor")
+        st.session_state.vidas["defensor"] = st.number_input("Vida Defensor", 1, 30, st.session_state.vidas["defensor"], key="vida_defensor")
+        st.session_state.daño["defensor"][0] = st.number_input("Daño Normal", 1, 10, st.session_state.daño["defensor"][0], key="daño_normal_d")
+        st.session_state.daño["defensor"][1] = st.number_input("Daño Crítico", 1, 15, st.session_state.daño["defensor"][1], key="daño_critico_d")
+        st.session_state.éxitos["defensor"] = st.multiselect("Éxitos Defensor", ["✅"] * 6 + ["✴️"] * 6, key="exitos_defensor")
 
     if st.button("Iniciar combate"):
         st.session_state.fase = "combate"
+        st.session_state.turno = "atacante"
+        st.session_state.exitos_usados = {"atacante": [], "defensor": []}
         st.experimental_rerun()
 
-# Función para mostrar dados disponibles
-def mostrar_dados(jugador):
-    normales = st.session_state.dados[jugador]["normales"]
-    criticos = st.session_state.dados[jugador]["criticos"]
-    bloqueados = st.session_state.bloqueados[jugador]
-
-    st.write(f"**{jugador.upper()}**")
-    col1, col2 = st.columns(2)
-    with col1:
-        for i in range(normales):
-            if f"N{i}" not in bloqueados:
-                if st.button(f"N{i+1} ({jugador[0]})", key=f"{jugador}_N_{i}"):
-                    elegir_accion(jugador, f"N{i}")
-    with col2:
-        for i in range(criticos):
-            if f"C{i}" not in bloqueados:
-                if st.button(f"C{i+1} ({jugador[0]})", key=f"{jugador}_C_{i}"):
-                    elegir_accion(jugador, f"C{i}")
-
-# Función para elegir acción
-def elegir_accion(jugador, dado_id):
-    opciones = ["Golpear", "Bloquear"]
-    eleccion = st.radio(f"Acción para {dado_id} ({jugador})", opciones, key=f"accion_{jugador}_{dado_id}")
-    if st.button("Ejecutar", key=f"ejecutar_{jugador}_{dado_id}"):
-        procesar_accion(jugador, dado_id, eleccion)
-        st.experimental_rerun()
-
-# Procesar acción del dado
-def procesar_accion(jugador, dado_id, accion):
-    oponente = "defensor" if jugador == "atacante" else "atacante"
-    tipo = "normal" if dado_id.startswith("N") else "critico"
-    dmg = st.session_state.dmg[tipo]
-
-    if accion == "Golpear":
-        st.session_state.vidas[oponente] -= dmg
-    elif accion == "Bloquear":
-        # Bloqueo automático del mejor dado válido
-        pool = st.session_state.dados[oponente]
-        bloqueables = []
-        for i in range(pool["criticos"]):
-            if f"C{i}" not in st.session_state.bloqueados[oponente]:
-                bloqueables.append(("C", i))
-        for i in range(pool["normales"]):
-            if f"N{i}" not in st.session_state.bloqueados[oponente]:
-                bloqueables.append(("N", i))
-
-        bloqueado = None
-        if tipo == "normal":
-            for t, i in bloqueables:
-                if t == "N":
-                    bloqueado = f"{t}{i}"
-                    break
-        else:  # crítico
-            for t, i in bloqueables:
-                bloqueado = f"{t}{i}"
-                break
-
-        if bloqueado:
-            st.session_state.bloqueados[oponente].append(bloqueado)
-
-    # El dado usado también se elimina
-    st.session_state.bloqueados[jugador].append(dado_id)
-
-    # Cambiar turno
-    st.session_state.turno = oponente
-
-# Fase de combate
 elif st.session_state.fase == "combate":
-    st.header("Resolución del combate")
-    st.write(f"Turno actual: **{st.session_state.turno.upper()}**")
-    st.write(f"Vida del atacante: {st.session_state.vidas['atacante']}")
-    st.write(f"Vida del defensor: {st.session_state.vidas['defensor']}")
+    atacante = st.session_state.turno
+    defensor = "defensor" if atacante == "atacante" else "atacante"
 
-    mostrar_dados(st.session_state.turno)
+    st.markdown(f"### Turno de {atacante.capitalize()}")
+    st.markdown(f"**Vida Atacante:** {st.session_state.vidas['atacante']}")
+    st.markdown(f"**Vida Defensor:** {st.session_state.vidas['defensor']}")
 
-    if all_dados_resueltos() or alguno_muerto():
-        st.success("Combate terminado.")
-        st.button("Volver al inicio", on_click=reiniciar)
+    éxitos_actuales = [e for i, e in enumerate(st.session_state.éxitos[atacante]) if i not in st.session_state.exitos_usados[atacante]]
+    éxitos_rival = [e for i, e in enumerate(st.session_state.éxitos[defensor]) if i not in st.session_state.exitos_usados[defensor]]
 
-def all_dados_resueltos():
-    for jugador in ["atacante", "defensor"]:
-        total = (
-            st.session_state.dados[jugador]["normales"]
-            + st.session_state.dados[jugador]["criticos"]
-        )
-        if len(st.session_state.bloqueados[jugador]) < total:
-            return False
-    return True
+    if not éxitos_actuales:
+        st.session_state.turno = defensor if éxitos_rival else None
+        if st.session_state.turno:
+            st.experimental_rerun()
+        else:
+            st.session_state.fase = "resultado"
+            st.experimental_rerun()
 
-def alguno_muerto():
-    return (
-        st.session_state.vidas["atacante"] <= 0
-        or st.session_state.vidas["defensor"] <= 0
-    )
+    for i, exito in enumerate(éxitos_actuales):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"Dado {i+1}: {exito}")
+            if st.button(f"⚔️ Golpear {i}", key=f"golpe_{atacante}_{i}"):
+                daño = st.session_state.daño[atacante][1 if exito == "✴️" else 0]
+                st.session_state.vidas[defensor] -= daño
+                st.session_state.exitos_usados[atacante].append(i)
+                if st.session_state.vidas[defensor] <= 0:
+                    st.session_state.fase = "resultado"
+                else:
+                    st.session_state.turno = defensor
+                st.experimental_rerun()
+        with col2:
+            for j, rival_exito in enumerate(éxitos_rival):
+                puede_bloquear = (exito == "✴️") or (exito == "✅" and rival_exito == "✅")
+                if puede_bloquear and st.button(f"🛡️ Bloquear {j}", key=f"bloqueo_{atacante}_{i}_{j}"):
+                    st.session_state.exitos_usados[atacante].append(i)
+                    st.session_state.exitos_usados[defensor].append(j)
+                    st.session_state.turno = defensor
+                    st.experimental_rerun()
+
+elif st.session_state.fase == "resultado":
+    st.success("¡Combate finalizado!")
+    st.markdown(f"**Vida Atacante restante:** {st.session_state.vidas['atacante']}")
+    st.markdown(f"**Vida Defensor restante:** {st.session_state.vidas['defensor']}")
+    st.button("Volver al inicio", on_click=reset_app)
