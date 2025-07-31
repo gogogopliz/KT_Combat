@@ -11,15 +11,15 @@ if "dados_defensor" not in st.session_state:
     st.session_state.dados_defensor = []
 if "vidas" not in st.session_state:
     st.session_state.vidas = {"atacante": 12, "defensor": 12}
-if "dados_usados" not in st.session_state:
-    st.session_state.dados_usados = []
+if "accion_dado" not in st.session_state:
+    st.session_state.accion_dado = None  # (jugador, índice)
 
 # Reset
 if st.button("🔁 Reiniciar"):
     st.session_state.dados_atacante = []
     st.session_state.dados_defensor = []
     st.session_state.vidas = {"atacante": 12, "defensor": 12}
-    st.session_state.dados_usados = []
+    st.session_state.accion_dado = None
     st.experimental_rerun()
 
 # CONFIGURACIÓN
@@ -45,7 +45,7 @@ with col2:
 st.session_state.vidas["atacante"] = vida_atac
 st.session_state.vidas["defensor"] = vida_def
 
-# Crear dados
+# Crear dados si están vacíos
 def crear_dados(crit, norm, jugador):
     dados = []
     for i in range(crit):
@@ -54,46 +54,53 @@ def crear_dados(crit, norm, jugador):
         dados.append({"tipo": "norm", "usado": False, "jugador": jugador})
     return dados
 
-st.session_state.dados_atacante = crear_dados(crits_atac, norms_atac, "atacante")
-st.session_state.dados_defensor = crear_dados(crits_def, norms_def, "defensor")
+if not st.session_state.dados_atacante:
+    st.session_state.dados_atacante = crear_dados(crits_atac, norms_atac, "atacante")
+if not st.session_state.dados_defensor:
+    st.session_state.dados_defensor = crear_dados(crits_def, norms_def, "defensor")
 
-def mostrar_dados(dados, rival_dados, jugador, rival, dmg_norm, dmg_crit):
-    vida = st.session_state.vidas[rival]
+def mostrar_dados(dados, jugador):
     cols = st.columns(len(dados)+1)
-    cols[0].markdown(f"**❤️ {st.session_state.vidas[jugador]}**")
-
+    cols[0].markdown(f"❤️ {st.session_state.vidas[jugador]}")
     for i, dado in enumerate(dados):
-        estado = "⚪" if dado["tipo"] == "norm" else "🟡"
-        opacidad = ":white_circle:" if not dado["usado"] else "🔒"
+        simbolo = "🟡" if dado["tipo"] == "crit" else "⚪"
+        if dado["usado"]:
+            simbolo = "🔒"
+        if cols[i+1].button(simbolo, key=f"btn_{jugador}_{i}"):
+            st.session_state.accion_dado = (jugador, i)
 
-        if st.session_state.vidas[jugador] <= 0:
-            cols[i+1].markdown("💀 ¡Muerto!")
-            continue
-
-        if not dado["usado"]:
-            if cols[i+1].button(f"{estado}", key=f"{jugador}_{i}"):
-                accion = st.radio(f"{jugador.upper()} - Dado {i+1}", ["Atacar", "Bloquear"], horizontal=True, key=f"accion_{jugador}_{i}")
-                if accion == "Atacar":
-                    daño = dmg_crit if dado["tipo"] == "crit" else dmg_norm
-                    st.session_state.vidas[rival] -= daño
-                else:
-                    # Bloqueo: buscar dado rival no usado
-                    for rival_dado in rival_dados:
-                        if not rival_dado["usado"]:
-                            rival_dado["usado"] = True
-                            break
-                dado["usado"] = True
-                st.experimental_rerun()
-        else:
-            cols[i+1].markdown(f"{opacidad}")
-
-# Mostrar dados en filas
 st.markdown("### Combate")
+
 st.markdown("**Atacante**")
-mostrar_dados(st.session_state.dados_atacante, st.session_state.dados_defensor, "atacante", "defensor", dmg_norm_atac, dmg_crit_atac)
+mostrar_dados(st.session_state.dados_atacante, "atacante")
 
 st.markdown("**Defensor**")
-mostrar_dados(st.session_state.dados_defensor, st.session_state.dados_atacante, "defensor", "atacante", dmg_norm_def, dmg_crit_def)
+mostrar_dados(st.session_state.dados_defensor, "defensor")
+
+# Proceso de acción sobre dado pulsado
+if st.session_state.accion_dado:
+    jugador, index = st.session_state.accion_dado
+    enemigo = "defensor" if jugador == "atacante" else "atacante"
+    dados_jugador = st.session_state.dados_atacante if jugador == "atacante" else st.session_state.dados_defensor
+    dados_enemigo = st.session_state.dados_defensor if jugador == "atacante" else st.session_state.dados_atacante
+    dmg_norm = dmg_norm_atac if jugador == "atacante" else dmg_norm_def
+    dmg_crit = dmg_crit_atac if jugador == "atacante" else dmg_crit_def
+    vida_enemigo = st.session_state.vidas[enemigo]
+
+    if not dados_jugador[index]["usado"]:
+        accion = st.radio("¿Qué quieres hacer?", ["Atacar", "Bloquear"], horizontal=True)
+        if st.button("✅ Confirmar acción"):
+            if accion == "Atacar":
+                daño = dmg_crit if dados_jugador[index]["tipo"] == "crit" else dmg_norm
+                st.session_state.vidas[enemigo] -= daño
+            else:
+                for d in dados_enemigo:
+                    if not d["usado"]:
+                        d["usado"] = True
+                        break
+            dados_jugador[index]["usado"] = True
+            st.session_state.accion_dado = None
+            st.experimental_rerun()
 
 # Resultado
 if st.session_state.vidas["atacante"] <= 0:
