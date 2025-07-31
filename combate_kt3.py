@@ -1,104 +1,48 @@
 
 import streamlit as st
-from PIL import Image
-import base64
+import random
 
-st.set_page_config(page_title="Combate KT3", layout="wide")
-
-# Inicializar estado
-if "vida_atacante" not in st.session_state:
-    st.session_state.vida_atacante = 12
-if "vida_defensor" not in st.session_state:
-    st.session_state.vida_defensor = 12
-
+st.set_page_config(layout="wide")
 st.title("Simulador de Combate - Kill Team 3")
+
+st.markdown("### Configuración de combate")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.header("Atacante")
-    vida_atacante = st.number_input("Vida inicial", min_value=1, max_value=50, value=st.session_state.vida_atacante, key="vida_atacante_input")
-    daño_normal_ata = st.number_input("Daño normal", min_value=1, max_value=10, value=3)
-    daño_critico_ata = st.number_input("Daño crítico", min_value=1, max_value=20, value=5)
-    éxitos_normales_ata = st.number_input("Éxitos normales", min_value=0, max_value=6, value=2)
-    éxitos_críticos_ata = st.number_input("Éxitos críticos", min_value=0, max_value=6, value=1)
+    st.subheader("Atacante")
+    éxitos_normales_atk = st.number_input("Éxitos normales", min_value=0, max_value=6, value=2, key="normales_atk")
+    éxitos_críticos_atk = st.number_input("Éxitos críticos", min_value=0, max_value=6, value=1, key="criticos_atk")
+    daño_normal_atk = st.number_input("Daño normal", min_value=1, max_value=10, value=3, key="daño_normal_atk")
+    daño_critico_atk = st.number_input("Daño crítico", min_value=1, max_value=10, value=5, key="daño_critico_atk")
+    vida_atk = st.number_input("Vida inicial", min_value=1, max_value=50, value=12, key="vida_atk")
 
 with col2:
-    st.header("Defensor")
-    vida_defensor = st.number_input("Vida inicial", min_value=1, max_value=50, value=st.session_state.vida_defensor, key="vida_defensor_input")
-    daño_normal_def = st.number_input("Daño normal", min_value=1, max_value=10, value=2)
-    daño_critico_def = st.number_input("Daño crítico", min_value=1, max_value=20, value=4)
-    éxitos_normales_def = st.number_input("Éxitos normales", min_value=0, max_value=6, value=2)
-    éxitos_críticos_def = st.number_input("Éxitos críticos", min_value=0, max_value=6, value=1)
+    st.subheader("Defensor")
+    éxitos_normales_def = st.number_input("Éxitos normales", min_value=0, max_value=6, value=2, key="normales_def")
+    éxitos_críticos_def = st.number_input("Éxitos críticos", min_value=0, max_value=6, value=1, key="criticos_def")
+    daño_normal_def = st.number_input("Daño normal", min_value=1, max_value=10, value=3, key="daño_normal_def")
+    daño_critico_def = st.number_input("Daño crítico", min_value=1, max_value=10, value=5, key="daño_critico_def")
+    vida_def = st.number_input("Vida inicial", min_value=1, max_value=50, value=12, key="vida_def")
 
-st.divider()
+st.markdown("### Resolución del combate")
 
-# Contadores de vida
-st.session_state.vida_atacante = vida_atacante
-st.session_state.vida_defensor = vida_defensor
+st.write("Haz clic en los dados para elegir si atacan, bloquean o son bloqueados (en desarrollo).")
 
-# Funciones
-def reset_dados():
-    st.session_state.dados_ata = [{"tipo": "normal"}] * int(éxitos_normales_ata) + [{"tipo": "critico"}] * int(éxitos_críticos_ata)
-    st.session_state.dados_def = [{"tipo": "normal"}] * int(éxitos_normales_def) + [{"tipo": "critico"}] * int(éxitos_críticos_def)
-    for d in st.session_state.dados_ata:
-        d["usado"] = False
-    for d in st.session_state.dados_def:
-        d["usado"] = False
-    st.session_state.muerto = None
+col_dados = st.columns(2)
 
-def usar_dado(agresor, idx):
-    if agresor == "ata":
-        dado = st.session_state.dados_ata[idx]
-        objetivo = "def"
-        daño = daño_critico_ata if dado["tipo"] == "critico" else daño_normal_ata
-    else:
-        dado = st.session_state.dados_def[idx]
-        objetivo = "ata"
-        daño = daño_critico_def if dado["tipo"] == "critico" else daño_normal_def
+with col_dados[0]:
+    st.markdown("**Atacante**")
+    st.text(f"❤️ Vida: {vida_atk}")
+    for i in range(éxitos_críticos_atk):
+        st.button("🎯", key=f"atk_crit_{i}")
+    for i in range(éxitos_normales_atk):
+        st.button("🎲", key=f"atk_norm_{i}")
 
-    if dado["usado"]:
-        return
-
-    acción = st.radio(f"¿Qué hacer con este dado {agresor}-{idx+1}?", ["Atacar", "Bloquear"], key=f"accion_{agresor}_{idx}")
-
-    if acción == "Bloquear":
-        opuestos = st.session_state.dados_def if agresor == "ata" else st.session_state.dados_ata
-        for od in opuestos:
-            if not od.get("usado", False):
-                od["usado"] = True
-                break
-    else:
-        if objetivo == "def":
-            st.session_state.vida_defensor -= daño
-            if st.session_state.vida_defensor <= 0:
-                st.session_state.muerto = "Defensor"
-        else:
-            st.session_state.vida_atacante -= daño
-            if st.session_state.vida_atacante <= 0:
-                st.session_state.muerto = "Atacante"
-
-    dado["usado"] = True
-
-# Inicializar dados
-if "dados_ata" not in st.session_state or st.button("Resetear dados"):
-    reset_dados()
-
-st.markdown("### Combate")
-
-# Mostrar dados
-def mostrar_dados(jugador, nombre, vida, daño_normal, daño_critico):
-    st.markdown(f"**{nombre} - Vida: {vida}**")
-    cols = st.columns(len(st.session_state[f"dados_{jugador}"]))
-    for i, d in enumerate(st.session_state[f"dados_{jugador}"]):
-        simbolo = "🟡" if d["tipo"] == "critico" else "⚪️"
-        if d["usado"]:
-            simbolo = "⬜️"
-        with cols[i]:
-            if not d.get("usado", False) and st.button(simbolo, key=f"{jugador}_{i}"):
-                usar_dado(jugador, i)
-    if st.session_state.muerto == nombre:
-        st.markdown("**¡Muerto!**")
-
-mostrar_dados("ata", "Atacante", st.session_state.vida_atacante, daño_normal_ata, daño_critico_ata)
-mostrar_dados("def", "Defensor", st.session_state.vida_defensor, daño_normal_def, daño_critico_def)
+with col_dados[1]:
+    st.markdown("**Defensor**")
+    st.text(f"❤️ Vida: {vida_def}")
+    for i in range(éxitos_críticos_def):
+        st.button("🎯", key=f"def_crit_{i}")
+    for i in range(éxitos_normales_def):
+        st.button("🎲", key=f"def_norm_{i}")
