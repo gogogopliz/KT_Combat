@@ -1,58 +1,71 @@
+
 import streamlit as st
+from uuid import uuid4
 
 st.set_page_config(layout="wide")
 
-# Inicialización del estado de sesión
+# Inicialización
 if "vidas" not in st.session_state:
-    st.session_state.vidas = {"atacante": 12, "defensor": 12}
-if "dados" not in st.session_state:
-    st.session_state.dados = {"atacante": [], "defensor": []}
-if "acciones" not in st.session_state:
-    st.session_state.acciones = {"atacante": [], "defensor": []}
-if "update_dados" not in st.session_state:
-    st.session_state.update_dados = True
+    st.session_state.vidas = {"atacante": 10, "defensor": 10}
+if "dados_atacante" not in st.session_state:
+    st.session_state.dados_atacante = []
+if "dados_defensor" not in st.session_state:
+    st.session_state.dados_defensor = []
+if "acciones_atacante" not in st.session_state:
+    st.session_state.acciones_atacante = {}
+if "acciones_defensor" not in st.session_state:
+    st.session_state.acciones_defensor = {}
 
-# Función para generar dados
-def generar_dados(num_normales, num_criticos):
-    return ["normal"] * num_normales + ["crítico"] * num_criticos
+# Funciones
+def generar_dados(tipo, cantidad):
+    return [{"id": str(uuid4()), "tipo": tipo, "accion": "Atacar"} for _ in range(cantidad)]
 
-# Función para mostrar fila de dados
-def mostrar_fila(nombre, color, dmg_norm, dmg_crit):
-    col_vida, col_norm, col_crit = st.columns([1, 3, 3])
-    with col_vida:
-        st.session_state.vidas[nombre] = st.number_input(
-            f"Vida {nombre}", 1, 30, st.session_state.vidas[nombre], key=f"vida_{nombre}"
-        )
-    with col_norm:
-        num_normales = st.number_input(f"Éxitos normales {nombre}", 0, 6, len([d for d in st.session_state.dados[nombre] if d == "normal"]), key=f"norm_{nombre}")
-    with col_crit:
-        num_criticos = st.number_input(f"Éxitos críticos {nombre}", 0, 6, len([d for d in st.session_state.dados[nombre] if d == "crítico"]), key=f"crit_{nombre}")
+def mostrar_dados(nombre, dados, acciones, enemigo):
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        st.markdown(f"**{nombre.capitalize()}**")
+    with col2:
+        cols = st.columns(len(dados))
+        for i, dado in enumerate(dados):
+            emoji = "🎯" if dado["tipo"] == "crítico" else "🎲"
+            if cols[i].button(f"{emoji}", key=f"{nombre}_{dado['id']}"):
+                acciones[dado["id"]] = "Bloquear" if acciones.get(dado["id"], "Atacar") == "Atacar" else "Atacar"
 
-    nuevos_dados = generar_dados(num_normales, num_criticos)
-    if nuevos_dados != st.session_state.dados[nombre]:
-        st.session_state.dados[nombre] = nuevos_dados
-        st.session_state.acciones[nombre] = ["atacar"] * len(nuevos_dados)
+        # Mostrar debajo las acciones
+        st.markdown("")
+        cols_acc = st.columns(len(dados))
+        for i, dado in enumerate(dados):
+            accion = acciones.get(dado["id"], "Atacar")
+            color = "🛡️" if accion == "Bloquear" else "⚔️"
+            cols_acc[i].markdown(f"<div style='text-align: center;'>{color}</div>", unsafe_allow_html=True)
 
-    st.markdown(f"**{nombre.capitalize()}** (Daño: {dmg_norm}/{dmg_crit})")
-    cols = st.columns(len(st.session_state.dados[nombre]) + 1)
-    with cols[0]:
-        st.markdown(f"**❤️ {st.session_state.vidas[nombre]}**")
-    for i, dado in enumerate(st.session_state.dados[nombre]):
-        with cols[i + 1]:
-            if st.button(f"{dado} ({st.session_state.acciones[nombre][i]})", key=f"{nombre}_dado_{i}"):
-                st.session_state.acciones[nombre][i] = (
-                    "bloquear" if st.session_state.acciones[nombre][i] == "atacar" else "atacar"
-                )
-
-# Interfaz principal
-st.title("Simulador de combate cuerpo a cuerpo - Kill Team 3")
+# UI
+st.markdown("## Simulador de combate cuerpo a cuerpo (Kill Team 3)")
 
 col1, col2 = st.columns(2)
 with col1:
-    dmg_norm_atac = st.number_input("Daño normal atacante", 1, 10, 3)
-    dmg_crit_atac = st.number_input("Daño crítico atacante", 1, 10, 5)
-    mostrar_fila("atacante", "red", dmg_norm_atac, dmg_crit_atac)
+    vida_ata = st.number_input("Vida atacante", 1, 30, value=st.session_state.vidas["atacante"], key="vida_ata")
 with col2:
-    dmg_norm_def = st.number_input("Daño normal defensor", 1, 10, 3)
-    dmg_crit_def = st.number_input("Daño crítico defensor", 1, 10, 5)
-    mostrar_fila("defensor", "blue", dmg_norm_def, dmg_crit_def)
+    vida_def = st.number_input("Vida defensor", 1, 30, value=st.session_state.vidas["defensor"], key="vida_def")
+
+st.session_state.vidas["atacante"] = vida_ata
+st.session_state.vidas["defensor"] = vida_def
+
+col1, col2 = st.columns(2)
+with col1:
+    n_norm_ata = st.number_input("Éxitos normales atacante", 0, 6, 2, key="norm_ata")
+    n_crit_ata = st.number_input("Éxitos críticos atacante", 0, 6, 1, key="crit_ata")
+    if st.button("Generar dados atacante"):
+        st.session_state.dados_atacante = generar_dados("normal", n_norm_ata) + generar_dados("crítico", n_crit_ata)
+        st.session_state.acciones_atacante = {d["id"]: "Atacar" for d in st.session_state.dados_atacante}
+
+with col2:
+    n_norm_def = st.number_input("Éxitos normales defensor", 0, 6, 2, key="norm_def")
+    n_crit_def = st.number_input("Éxitos críticos defensor", 0, 6, 1, key="crit_def")
+    if st.button("Generar dados defensor"):
+        st.session_state.dados_defensor = generar_dados("normal", n_norm_def) + generar_dados("crítico", n_crit_def)
+        st.session_state.acciones_defensor = {d["id"]: "Atacar" for d in st.session_state.dados_defensor}
+
+st.markdown("---")
+mostrar_dados("atacante", st.session_state.dados_atacante, st.session_state.acciones_atacante, "defensor")
+mostrar_dados("defensor", st.session_state.dados_defensor, st.session_state.acciones_defensor, "atacante")
